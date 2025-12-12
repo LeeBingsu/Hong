@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>홍's park - Gem 공유</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        * { font-family: 'Noto Sans KR', sans-serif; }
+        .gem-card {
+            background: #6366f1;
+            transition: all 0.3s ease;
+        }
+        .gem-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(99, 102, 241, 0.4);
+        }
+        .pulse-dot {
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .new-gem {
+            animation: slideIn 0.5s ease-out;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .loading-spinner {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-900">
+    <!-- Header -->
+    <header class="py-8 px-4">
+        <div class="max-w-4xl mx-auto text-center">
+            <h1 class="text-4xl md:text-5xl font-bold text-indigo-400 mb-2">
+                홍's park
+            </h1>
+            <p class="text-slate-400 text-lg">Google Gem을 공유하는 공간</p>
+            <div id="connectionStatus" class="flex items-center justify-center gap-2 mt-3 text-sm">
+                <span class="w-2 h-2 bg-yellow-400 rounded-full pulse-dot"></span>
+                <span class="text-yellow-400">연결 중...</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Upload Form -->
+    <section class="px-4 pb-8">
+        <div class="max-w-2xl mx-auto">
+            <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700">
+                <h2 class="text-xl font-semibold text-white mb-4">
+                    새 Gem 공유하기
+                </h2>
+                <form id="gemForm" class="space-y-4">
+                    <div>
+                        <label class="block text-slate-300 text-sm mb-2">Gem 이름</label>
+                        <input 
+                            type="text" 
+                            id="gemName" 
+                            placeholder="예: 코딩 도우미, 영어 선생님..."
+                            class="w-full px-4 py-3 rounded-xl bg-slate-700 border border-slate-600 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            required
+                        >
+                    </div>
+                    <div>
+                        <label class="block text-slate-300 text-sm mb-2">Gem 공유 링크</label>
+                        <input 
+                            type="url" 
+                            id="gemLink" 
+                            placeholder="https://gemini.google.com/..."
+                            class="w-full px-4 py-3 rounded-xl bg-slate-700 border border-slate-600 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            required
+                        >
+                    </div>
+                    <div>
+                        <label class="block text-slate-300 text-sm mb-2">설명 (선택)</label>
+                        <textarea 
+                            id="gemDesc" 
+                            placeholder="이 Gem에 대한 간단한 설명..."
+                            rows="2"
+                            class="w-full px-4 py-3 rounded-xl bg-slate-700 border border-slate-600 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+                        ></textarea>
+                    </div>
+                    <button 
+                        type="submit"
+                        id="submitBtn"
+                        class="w-full py-3 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        Gem 공유하기
+                    </button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- Gems Grid -->
+    <section class="px-4 pb-12">
+        <div class="max-w-4xl mx-auto">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+                    공유된 Gems
+                    <span id="gemCount" class="text-sm bg-indigo-600/30 px-3 py-1 rounded-full text-indigo-300">0개</span>
+                </h2>
+            </div>
+            
+            <!-- Loading State -->
+            <div id="loadingState" class="text-center py-16">
+                <div class="w-8 h-8 border-4 border-indigo-400 border-t-transparent rounded-full loading-spinner inline-block mb-4"></div>
+                <p class="text-slate-400">Gem을 불러오는 중...</p>
+            </div>
+
+            <div id="gemsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Gems will be rendered here -->
+            </div>
+
+            <div id="emptyState" class="hidden text-center py-16">
+                <p class="text-slate-300 text-lg">아직 공유된 Gem이 없습니다</p>
+                <p class="text-slate-500 text-sm mt-2">첫 번째 Gem을 공유해보세요!</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-6 text-center text-slate-500 text-sm">
+        <p>Made by 홍's park</p>
+        <p class="text-xs mt-1 text-slate-600">모든 사용자와 실시간 공유됩니다</p>
+    </footer>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 flex items-center gap-2 z-50">
+        <span id="toastIcon">✅</span> <span id="toastMessage">Gem이 추가되었습니다!</span>
+    </div>
+
+    <script>
+        // ============================================
+        // Firebase 설정 - 본인의 Firebase 프로젝트 정보를 입력하세요
+        // ============================================
+        const firebaseConfig = {
+  apiKey: "AIzaSyA2H_f049azQK710uNIdjT4wXqsle4N-qU",
+  authDomain: "hong-5638a.firebaseapp.com",
+  databaseURL: "https://hong-5638a-default-rtdb.firebaseio.com",
+  projectId: "hong-5638a",
+  storageBucket: "hong-5638a.firebasestorage.app",
+  messagingSenderId: "567566299024",
+  appId: "1:567566299024:web:7dfef9a09b2f7306880d15"
+};
+        // ============================================
+
+        let db = null;
+        let gemsRef = null;
+
+        // Firebase 초기화
+        function initFirebase() {
+            try {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.database();
+                gemsRef = db.ref('gems');
+
+                // 연결 상태 모니터링
+                db.ref('.info/connected').on('value', (snapshot) => {
+                    const isConnected = snapshot.val() === true;
+                    updateConnectionStatus(isConnected ? 'connected' : 'disconnected');
+                });
+
+                // 실시간 데이터 리스너
+                gemsRef.orderByChild('createdAt').on('value', (snapshot) => {
+                    const gems = [];
+                    snapshot.forEach((child) => {
+                        gems.push({ id: child.key, ...child.val() });
+                    });
+                    gems.reverse(); // 최신순 정렬
+                    renderGems(gems);
+                    document.getElementById('loadingState').classList.add('hidden');
+                });
+
+            } catch (error) {
+                console.error("Firebase 초기화 실패:", error);
+                updateConnectionStatus('error');
+            }
+        }
+
+        // 연결 상태 업데이트
+        function updateConnectionStatus(status) {
+            const statusEl = document.getElementById('connectionStatus');
+            const configs = {
+                connected: { color: 'green', text: '실시간 연결됨' },
+                disconnected: { color: 'red', text: '연결 끊김' },
+                error: { color: 'red', text: '연결 오류' }
+            };
+            const config = configs[status] || configs.disconnected;
+            statusEl.innerHTML = `
+                <span class="w-2 h-2 bg-${config.color}-400 rounded-full pulse-dot"></span>
+                <span class="text-${config.color}-400">${config.text}</span>
+            `;
+        }
+
+        // Gem 추가
+        async function addGem(name, link, description) {
+            const newGem = {
+                name: name,
+                link: link,
+                description: description,
+                createdAt: Date.now()
+            };
+            await gemsRef.push(newGem);
+        }
+
+        // Format date
+        function formatDate(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diff = now - date;
+            
+            if (diff < 60000) return '방금 전';
+            if (diff < 3600000) return `${Math.floor(diff / 60000)}분 전`;
+            if (diff < 86400000) return `${Math.floor(diff / 3600000)}시간 전`;
+            if (diff < 604800000) return `${Math.floor(diff / 86400000)}일 전`;
+            
+            return date.toLocaleDateString('ko-KR');
+        }
+
+        // Render gems
+        function renderGems(gems) {
+            const container = document.getElementById('gemsContainer');
+            const emptyState = document.getElementById('emptyState');
+            const gemCount = document.getElementById('gemCount');
+            const loadingState = document.getElementById('loadingState');
+
+            loadingState.classList.add('hidden');
+            gemCount.textContent = `${gems.length}개`;
+
+            if (gems.length === 0) {
+                container.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+
+            container.innerHTML = gems.map(gem => `
+                <div class="gem-card rounded-2xl p-5 new-gem">
+                    <div class="flex items-start justify-between mb-3">
+                        <h3 class="text-lg font-bold text-white">${escapeHtml(gem.name)}</h3>
+                    </div>
+                    ${gem.description ? `
+                        <p class="text-indigo-100/80 text-sm mb-4 line-clamp-2">${escapeHtml(gem.description)}</p>
+                    ` : '<div class="mb-4"></div>'}
+                    <div class="flex items-center justify-between">
+                        <span class="text-indigo-200/60 text-xs">${formatDate(gem.createdAt)}</span>
+                        <a 
+                            href="${escapeHtml(gem.link)}" 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            class="inline-flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                        >
+                            바로가기 →
+                        </a>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Escape HTML to prevent XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Show toast notification
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            const toastIcon = document.getElementById('toastIcon');
+            
+            toastMessage.textContent = message;
+            toastIcon.textContent = isError ? '❌' : '✅';
+            toast.className = toast.className.replace(/bg-\w+-500/, isError ? 'bg-red-500' : 'bg-green-500');
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        // Form submission
+        document.getElementById('gemForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const name = document.getElementById('gemName').value.trim();
+            const link = document.getElementById('gemLink').value.trim();
+            const description = document.getElementById('gemDesc').value.trim();
+
+            if (!name || !link) return;
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="w-5 h-5 border-2 border-white border-t-transparent rounded-full loading-spinner inline-block"></span> 공유 중...';
+
+            try {
+                await addGem(name, link, description);
+                showToast('새 Gem이 공유되었습니다!');
+                this.reset();
+            } catch (error) {
+                console.error(error);
+                showToast('공유 중 오류가 발생했습니다.', true);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = 'Gem 공유하기';
+            }
+        });
+
+        // Initialize on DOM load
+        document.addEventListener('DOMContentLoaded', initFirebase);
+    </script>
+</body>
+</html>
