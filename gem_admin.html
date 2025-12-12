@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>홍's park - 관리자</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        * { font-family: 'Noto Sans KR', sans-serif; }
+        .loading-spinner {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-900">
+    <!-- Header -->
+    <header class="py-8 px-4">
+        <div class="max-w-4xl mx-auto text-center">
+            <h1 class="text-3xl md:text-4xl font-bold text-indigo-400 mb-2">
+                홍's park 관리자
+            </h1>
+            <p class="text-slate-400">Gem 수정 및 삭제</p>
+            <a href="index.html" class="inline-block mt-4 text-sm text-indigo-300 hover:text-indigo-200 underline">
+                ← 메인으로 돌아가기
+            </a>
+        </div>
+    </header>
+
+    <!-- Gems List -->
+    <section class="px-4 pb-12">
+        <div class="max-w-4xl mx-auto">
+            <!-- Loading State -->
+            <div id="loadingState" class="text-center py-16">
+                <div class="w-8 h-8 border-4 border-indigo-400 border-t-transparent rounded-full loading-spinner inline-block mb-4"></div>
+                <p class="text-slate-400">Gem을 불러오는 중...</p>
+            </div>
+
+            <div id="gemsContainer" class="space-y-4">
+                <!-- Gems will be rendered here -->
+            </div>
+
+            <div id="emptyState" class="hidden text-center py-16">
+                <p class="text-slate-300 text-lg">등록된 Gem이 없습니다</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Edit Modal -->
+    <div id="editModal" class="fixed inset-0 bg-black/70 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-lg border border-slate-700">
+            <h3 class="text-xl font-bold text-white mb-4">Gem 수정</h3>
+            <form id="editForm" class="space-y-4">
+                <input type="hidden" id="editId">
+                <div>
+                    <label class="block text-slate-300 text-sm mb-2">Gem 이름</label>
+                    <input 
+                        type="text" 
+                        id="editName" 
+                        class="w-full px-4 py-3 rounded-xl bg-slate-700 border border-slate-600 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        required
+                    >
+                </div>
+                <div>
+                    <label class="block text-slate-300 text-sm mb-2">Gem 공유 링크</label>
+                    <input 
+                        type="url" 
+                        id="editLink" 
+                        class="w-full px-4 py-3 rounded-xl bg-slate-700 border border-slate-600 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        required
+                    >
+                </div>
+                <div>
+                    <label class="block text-slate-300 text-sm mb-2">설명</label>
+                    <textarea 
+                        id="editDesc" 
+                        rows="2"
+                        class="w-full px-4 py-3 rounded-xl bg-slate-700 border border-slate-600 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                    ></textarea>
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button 
+                        type="button"
+                        onclick="closeModal()"
+                        class="flex-1 py-3 px-6 bg-slate-600 hover:bg-slate-500 text-white font-semibold rounded-xl transition-colors"
+                    >
+                        취소
+                    </button>
+                    <button 
+                        type="submit"
+                        class="flex-1 py-3 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition-colors"
+                    >
+                        저장
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Confirm Modal -->
+    <div id="deleteModal" class="fixed inset-0 bg-black/70 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-slate-700 text-center">
+            <h3 class="text-xl font-bold text-white mb-2">정말 삭제하시겠습니까?</h3>
+            <p class="text-slate-400 mb-6">이 작업은 되돌릴 수 없습니다.</p>
+            <input type="hidden" id="deleteId">
+            <div class="flex gap-3">
+                <button 
+                    onclick="closeDeleteModal()"
+                    class="flex-1 py-3 px-6 bg-slate-600 hover:bg-slate-500 text-white font-semibold rounded-xl transition-colors"
+                >
+                    취소
+                </button>
+                <button 
+                    onclick="confirmDelete()"
+                    class="flex-1 py-3 px-6 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors"
+                >
+                    삭제
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 flex items-center gap-2 z-50">
+        <span id="toastIcon">✅</span> <span id="toastMessage">완료!</span>
+    </div>
+
+    <script>
+        // ============================================
+        // Firebase 설정 - index.html과 동일하게 입력하세요
+        // ============================================
+        const firebaseConfig = {
+  apiKey: "AIzaSyA2H_f049azQK710uNIdjT4wXqsle4N-qU",
+  authDomain: "hong-5638a.firebaseapp.com",
+  databaseURL: "https://hong-5638a-default-rtdb.firebaseio.com",
+  projectId: "hong-5638a",
+  storageBucket: "hong-5638a.firebasestorage.app",
+  messagingSenderId: "567566299024",
+  appId: "1:567566299024:web:7dfef9a09b2f7306880d15"
+};
+        // ============================================
+
+        let db = null;
+        let gemsRef = null;
+
+        // Firebase 초기화
+        function initFirebase() {
+            try {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.database();
+                gemsRef = db.ref('gems');
+
+                // 실시간 데이터 리스너
+                gemsRef.orderByChild('createdAt').on('value', (snapshot) => {
+                    const gems = [];
+                    snapshot.forEach((child) => {
+                        gems.push({ id: child.key, ...child.val() });
+                    });
+                    gems.reverse();
+                    renderGems(gems);
+                    document.getElementById('loadingState').classList.add('hidden');
+                });
+
+            } catch (error) {
+                console.error("Firebase 초기화 실패:", error);
+            }
+        }
+
+        // Format date
+        function formatDate(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleDateString('ko-KR') + ' ' + date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        // Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Render gems
+        function renderGems(gems) {
+            const container = document.getElementById('gemsContainer');
+            const emptyState = document.getElementById('emptyState');
+            const loadingState = document.getElementById('loadingState');
+
+            loadingState.classList.add('hidden');
+
+            if (gems.length === 0) {
+                container.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+
+            container.innerHTML = gems.map(gem => `
+                <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div class="flex-1 min-w-0">
+                            <h3 class="text-lg font-bold text-white mb-1">${escapeHtml(gem.name)}</h3>
+                            <p class="text-indigo-400 text-sm truncate mb-1">${escapeHtml(gem.link)}</p>
+                            ${gem.description ? `<p class="text-slate-400 text-sm">${escapeHtml(gem.description)}</p>` : ''}
+                            <p class="text-slate-500 text-xs mt-2">${formatDate(gem.createdAt)}</p>
+                        </div>
+                        <div class="flex gap-2 shrink-0">
+                            <button 
+                                onclick="openEditModal('${gem.id}', '${escapeHtml(gem.name).replace(/'/g, "\\'")}', '${escapeHtml(gem.link).replace(/'/g, "\\'")}', '${escapeHtml(gem.description || '').replace(/'/g, "\\'")}')"
+                                class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
+                            >
+                                수정
+                            </button>
+                            <button 
+                                onclick="openDeleteModal('${gem.id}')"
+                                class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+                            >
+                                삭제
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Edit Modal
+        function openEditModal(id, name, link, desc) {
+            document.getElementById('editId').value = id;
+            document.getElementById('editName').value = name;
+            document.getElementById('editLink').value = link;
+            document.getElementById('editDesc').value = desc;
+            document.getElementById('editModal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('editModal').classList.add('hidden');
+        }
+
+        // Delete Modal
+        function openDeleteModal(id) {
+            document.getElementById('deleteId').value = id;
+            document.getElementById('deleteModal').classList.remove('hidden');
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('deleteModal').classList.add('hidden');
+        }
+
+        async function confirmDelete() {
+            const id = document.getElementById('deleteId').value;
+            try {
+                await gemsRef.child(id).remove();
+                showToast('삭제되었습니다.');
+            } catch (error) {
+                showToast('삭제 중 오류가 발생했습니다.', true);
+            }
+            closeDeleteModal();
+        }
+
+        // Edit Form Submit
+        document.getElementById('editForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const id = document.getElementById('editId').value;
+            const name = document.getElementById('editName').value.trim();
+            const link = document.getElementById('editLink').value.trim();
+            const desc = document.getElementById('editDesc').value.trim();
+
+            try {
+                await gemsRef.child(id).update({
+                    name: name,
+                    link: link,
+                    description: desc
+                });
+                showToast('수정되었습니다.');
+                closeModal();
+            } catch (error) {
+                showToast('수정 중 오류가 발생했습니다.', true);
+            }
+        });
+
+        // Toast
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            const toastIcon = document.getElementById('toastIcon');
+            
+            toastMessage.textContent = message;
+            toastIcon.textContent = isError ? '❌' : '✅';
+            toast.className = toast.className.replace(/bg-\w+-500/, isError ? 'bg-red-500' : 'bg-green-500');
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', initFirebase);
+    </script>
+</body>
+</html>
