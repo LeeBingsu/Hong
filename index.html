@@ -40,6 +40,14 @@
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
         }
+        .review-section {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+        .review-section.open {
+            max-height: 500px;
+        }
     </style>
 </head>
 <body class="min-h-screen bg-slate-900">
@@ -122,7 +130,7 @@
                 <p class="text-slate-400">Gem을 불러오는 중...</p>
             </div>
 
-            <div id="gemsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div id="gemsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <!-- Gems will be rendered here -->
             </div>
 
@@ -161,6 +169,8 @@
 
         let db = null;
         let gemsRef = null;
+        let reviewsRef = null;
+        let gemsData = [];
 
         // Firebase 초기화
         function initFirebase() {
@@ -168,6 +178,7 @@
                 firebase.initializeApp(firebaseConfig);
                 db = firebase.database();
                 gemsRef = db.ref('gems');
+                reviewsRef = db.ref('reviews');
 
                 // 연결 상태 모니터링
                 db.ref('.info/connected').on('value', (snapshot) => {
@@ -182,6 +193,7 @@
                         gems.push({ id: child.key, ...child.val() });
                     });
                     gems.reverse(); // 최신순 정렬
+                    gemsData = gems;
                     renderGems(gems);
                     document.getElementById('loadingState').classList.add('hidden');
                 });
@@ -218,6 +230,28 @@
             await gemsRef.push(newGem);
         }
 
+        // 후기 추가
+        async function addReview(gemId, nickname, content) {
+            const newReview = {
+                gemId: gemId,
+                nickname: nickname,
+                content: content,
+                createdAt: Date.now()
+            };
+            await reviewsRef.push(newReview);
+        }
+
+        // 후기 불러오기
+        async function loadReviews(gemId) {
+            const snapshot = await reviewsRef.orderByChild('gemId').equalTo(gemId).once('value');
+            const reviews = [];
+            snapshot.forEach((child) => {
+                reviews.push({ id: child.key, ...child.val() });
+            });
+            reviews.sort((a, b) => b.createdAt - a.createdAt);
+            return reviews;
+        }
+
         // Format date
         function formatDate(timestamp) {
             const date = new Date(timestamp);
@@ -230,6 +264,75 @@
             if (diff < 604800000) return `${Math.floor(diff / 86400000)}일 전`;
             
             return date.toLocaleDateString('ko-KR');
+        }
+
+        // 후기 섹션 토글
+        async function toggleReviews(gemId) {
+            const section = document.getElementById(`reviews-${gemId}`);
+            const reviewsList = document.getElementById(`reviews-list-${gemId}`);
+            
+            if (section.classList.contains('open')) {
+                section.classList.remove('open');
+            } else {
+                section.classList.add('open');
+                // 후기 로드
+                const reviews = await loadReviews(gemId);
+                renderReviewsList(gemId, reviews);
+            }
+        }
+
+        // 후기 목록 렌더링
+        function renderReviewsList(gemId, reviews) {
+            const reviewsList = document.getElementById(`reviews-list-${gemId}`);
+            
+            if (reviews.length === 0) {
+                reviewsList.innerHTML = '<p class="text-indigo-200/60 text-sm text-center py-2">아직 후기가 없습니다</p>';
+            } else {
+                reviewsList.innerHTML = reviews.map(review => `
+                    <div class="bg-white/10 rounded-lg p-3 mb-2">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="font-medium text-white text-sm">${escapeHtml(review.nickname)}</span>
+                            <span class="text-indigo-200/50 text-xs">${formatDate(review.createdAt)}</span>
+                        </div>
+                        <p class="text-indigo-100/80 text-sm">${escapeHtml(review.content)}</p>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // 후기 제출
+        async function submitReview(gemId) {
+            const nicknameInput = document.getElementById(`review-nickname-${gemId}`);
+            const contentInput = document.getElementById(`review-content-${gemId}`);
+            const submitBtn = document.getElementById(`review-submit-${gemId}`);
+            
+            const nickname = nicknameInput.value.trim();
+            const content = contentInput.value.trim();
+            
+            if (!nickname || !content) {
+                showToast('닉네임과 후기를 모두 입력해주세요.', true);
+                return;
+            }
+            
+            submitBtn.disabled = true;
+            submitBtn.textContent = '등록 중...';
+            
+            try {
+                await addReview(gemId, nickname, content);
+                nicknameInput.value = '';
+                contentInput.value = '';
+                showToast('후기가 등록되었습니다!');
+                
+                // 후기 목록 새로고침
+                const reviews = await loadReviews(gemId);
+                renderReviewsList(gemId, reviews);
+            } catch (error) {
+                console.error(error);
+                showToast('후기 등록 중 오류가 발생했습니다.', true);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '등록';
+            }
         }
 
         // Render gems
@@ -258,7 +361,7 @@
                     ${gem.description ? `
                         <p class="text-indigo-100/80 text-sm mb-4 line-clamp-2">${escapeHtml(gem.description)}</p>
                     ` : '<div class="mb-4"></div>'}
-                    <div class="flex items-center justify-between">
+                    <div class="flex items-center justify-between mb-3">
                         <span class="text-indigo-200/60 text-xs">${formatDate(gem.createdAt)}</span>
                         <a 
                             href="${escapeHtml(gem.link)}" 
@@ -268,6 +371,52 @@
                         >
                             바로가기 →
                         </a>
+                    </div>
+                    
+                    <!-- 후기 토글 버튼 -->
+                    <button 
+                        onclick="toggleReviews('${gem.id}')"
+                        class="w-full text-left text-indigo-200 hover:text-white text-sm py-2 border-t border-white/20 mt-2 transition-colors flex items-center gap-2"
+                    >
+                        <span>후기 보기 / 남기기</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    </button>
+                    
+                    <!-- 후기 섹션 -->
+                    <div id="reviews-${gem.id}" class="review-section">
+                        <div class="pt-3 space-y-3">
+                            <!-- 후기 작성 폼 -->
+                            <div class="bg-white/10 rounded-lg p-3">
+                                <input 
+                                    type="text" 
+                                    id="review-nickname-${gem.id}"
+                                    placeholder="닉네임"
+                                    class="w-full px-3 py-2 rounded-lg bg-white/20 text-white placeholder-indigo-200/50 text-sm focus:outline-none focus:ring-2 focus:ring-white/30 mb-2"
+                                    maxlength="20"
+                                >
+                                <textarea 
+                                    id="review-content-${gem.id}"
+                                    placeholder="이 Gem에 대한 후기를 남겨주세요..."
+                                    rows="2"
+                                    class="w-full px-3 py-2 rounded-lg bg-white/20 text-white placeholder-indigo-200/50 text-sm focus:outline-none focus:ring-2 focus:ring-white/30 resize-none mb-2"
+                                    maxlength="200"
+                                ></textarea>
+                                <button 
+                                    id="review-submit-${gem.id}"
+                                    onclick="submitReview('${gem.id}')"
+                                    class="w-full py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm font-medium transition-colors"
+                                >
+                                    등록
+                                </button>
+                            </div>
+                            
+                            <!-- 후기 목록 -->
+                            <div id="reviews-list-${gem.id}">
+                                <p class="text-indigo-200/60 text-sm text-center py-2">로딩 중...</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `).join('');
