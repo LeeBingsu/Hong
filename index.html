@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gem 공유</title>
+    <title>GemHub</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
     <!-- Firebase SDK -->
@@ -14,7 +14,6 @@
         .gem-card {
             background: #6366f1;
             transition: all 0.3s ease;
-            border: 2px solid rgba(255, 255, 255, 0.5); 
         }
         .gem-card:hover {
             transform: translateY(-5px);
@@ -360,10 +359,10 @@
             emptyState.classList.add('hidden');
 
             container.innerHTML = gems.map(gem => `
-                <div class="gem-card rounded-2xl p-5 new-gem ${gem.pinned ? 'ring-2 ring-yellow-400' : ''}"
+                <div class="gem-card rounded-2xl p-5 new-gem ${gem.pinned ? 'ring-2 ring-yellow-400' : ''}">
                     <div class="flex items-start justify-between mb-3">
-                        <div class="flex items-center gap-2">
-                            ${gem.pinned ? '<span class="text-yellow-300 text-xs bg-yellow-500/20 px-2 py-0.5 rounded">📌 고정</span>' : ''}
+                        <div class="flex-1">
+                            ${gem.pinned ? '<span class="text-yellow-300 text-xs bg-yellow-500/20 px-2 py-0.5 rounded inline-block mb-2">📌 고정</span>' : ''}
                             <h3 class="text-lg font-bold text-white">${escapeHtml(gem.name)}</h3>
                         </div>
                     </div>
