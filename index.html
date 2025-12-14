@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gems 공유</title>
+<title>Gem 공유</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
     <!-- Firebase SDK -->
@@ -187,12 +187,17 @@
                 });
 
                 // 실시간 데이터 리스너
-                gemsRef.orderByChild('createdAt').on('value', (snapshot) => {
+                gemsRef.on('value', (snapshot) => {
                     const gems = [];
                     snapshot.forEach((child) => {
                         gems.push({ id: child.key, ...child.val() });
                     });
-                    gems.reverse(); // 최신순 정렬
+                    // 고정된 항목 먼저, 그 다음 최신순 정렬
+                    gems.sort((a, b) => {
+                        if (a.pinned && !b.pinned) return -1;
+                        if (!a.pinned && b.pinned) return 1;
+                        return b.createdAt - a.createdAt;
+                    });
                     gemsData = gems;
                     renderGems(gems);
                     document.getElementById('loadingState').classList.add('hidden');
@@ -354,9 +359,12 @@
             emptyState.classList.add('hidden');
 
             container.innerHTML = gems.map(gem => `
-                <div class="gem-card rounded-2xl p-5 new-gem">
+                <div class="gem-card rounded-2xl p-5 new-gem ${gem.pinned ? 'ring-2 ring-yellow-400' : ''}"
                     <div class="flex items-start justify-between mb-3">
-                        <h3 class="text-lg font-bold text-white">${escapeHtml(gem.name)}</h3>
+                        <div class="flex items-center gap-2">
+                            ${gem.pinned ? '<span class="text-yellow-300 text-xs bg-yellow-500/20 px-2 py-0.5 rounded">📌 고정</span>' : ''}
+                            <h3 class="text-lg font-bold text-white">${escapeHtml(gem.name)}</h3>
+                        </div>
                     </div>
                     ${gem.description ? `
                         <p class="text-indigo-100/80 text-sm mb-4 line-clamp-2">${escapeHtml(gem.description)}</p>
